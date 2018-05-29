@@ -305,7 +305,7 @@ class Process(object):
         if not isinstance(dwDesiredAccess, DWORD):
             for arg in args:
                 dwDesiredAccess |= arg
-            
+
             dwDesiredAccess = DWORD(dwDesiredAccess)
 
         self.dwDesiredAccess = dwDesiredAccess
@@ -399,7 +399,7 @@ class Process(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-    
+
     @staticmethod
     def create(filename, *args, **kwargs):
         if 'lpProcessAttributes' in kwargs:
@@ -527,20 +527,25 @@ class EnumProcesses(object):
             yield Process(pid)
 
     def __getitem__(self, item):
+        res = []
         for process in self:
             process.open()
             if isinstance(item, int) and item == process.pid:
+                process.close()
                 return process
             elif (
                 isinstance(item, str) and
                 item.lower() == process.executable.lower()
             ):
-                process.close()
-                return process
+                res += [process]
 
             process.close()
+            
         if isinstance(item, int):
             raise IndexError('No process matching PID {0}'.format(item))
+
+        if res:
+            return res
 
         raise KeyError('No process matching name {0}'.format(item))
 
