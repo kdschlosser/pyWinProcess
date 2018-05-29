@@ -25,7 +25,7 @@ This module allows you to perform the following.
   * Get the startup information for the process running this module
 
 
-######  *Enumerating Processes*
+####  *Enumerating Processes*
 _________________________
 
 
@@ -69,7 +69,7 @@ so you can use them in `with` statements, this will handle opening and closing o
 
   And that sums up enumerating the processes. I told you it couldn't get any easier!
 
-###### Process
+#### *Process*
 ________________
 
 The objects returned from EnumProcesses are going to be pyWinProcess.Process objects.
@@ -171,7 +171,7 @@ Methods.
 
     This method will be discussed further down.
 
-###### Process Memory Counters
+#### *Process Memory Counters*
 __________________________
 
 The `memory_counters` property in the `Process` object returns an
@@ -190,7 +190,7 @@ explains what the data is that the variable holds.
   * PeakPagefileUsage
   * PrivateUsage
 
-###### Performance Information
+#### *Performance Information*
 _______________________
 
 Below is some example code of how to retrieve the performance data.
@@ -234,7 +234,7 @@ The available variables are as follows.
   * ThreadCount
 
 
-###### Creating a Process
+#### *Creating a Process*
 __________________________
 
 This one is a complex bugger to cover. I will do my best to make it as
