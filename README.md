@@ -7,7 +7,7 @@ It allows for managing Microsoft Windows Tasks (processes).
 
 I have done my very best to make this module as easy to use as possible.
 If you only want a module to handle Windows processes without all of the "fluff" this is what you are looking for.
-If there is something you want me to add please feel fre to submit an issue requesting me to add it.
+If there is something you want me to add please feel free to submit an issue requesting me to add it.
 I have become extremely familiar with how to make pure python Windows API interfaces.
 
 This module allows you to perform the following.
@@ -32,7 +32,8 @@ _________________________
 It doesn't get much easier then this.
 This code block is assumed
 
-```import pyWinProcess
+```
+import pyWinProcess
 
 process_enum = pyWinProcess.EnumProcesses
 ```
