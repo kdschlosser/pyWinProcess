@@ -1,6 +1,8 @@
 pyWinProcess
 ============
 
+Run the `__init__.py` file for a display of what it can do.
+
 This module is written in pure python and only requires the python
 standard lib. It is compatible with Python 2 & 3
 It allows for managing Microsoft Windows Tasks (processes).
