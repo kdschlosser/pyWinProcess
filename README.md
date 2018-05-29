@@ -30,7 +30,7 @@ _________________________
 
 
 It doesn't get much easier then this.
-  
+
 This code block is assumed
 
 ```
@@ -105,6 +105,14 @@ process has not been opened.
   * pid
 
       Process ID
+
+  * child_processes
+
+      Returns a `list` of `pyWinProcess.Process` instances.
+
+  * parent_process
+
+      Returns a `pyWinProcess.Process` instance or `None`.
 
 Methods.
 

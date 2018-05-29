@@ -26,7 +26,9 @@ from ctypes.wintypes import (
     DWORD,
     WORD,
     BOOL,
-    BYTE
+    BYTE,
+    WCHAR,
+    LONG
 )
 
 POINTER = ctypes.POINTER
@@ -41,12 +43,30 @@ LPCTSTR = LPTSTR
 HMODULE = HANDLE
 UCHAR = ctypes.c_ubyte
 SIZE_T = ctypes.c_size_t
+TCHAR = WCHAR
 NULL = None
 
 if ctypes.sizeof(ctypes.c_void_p) == 8:
     ULONG_PTR = ctypes.c_ulonglong
 else:
     ULONG_PTR = ctypes.c_ulong
+
+
+TH32CS_INHERIT = 0x80000000
+
+
+TH32CS_SNAPHEAPLIST = 0x00000001
+TH32CS_SNAPMODULE = 0x00000008
+TH32CS_SNAPMODULE32 = 0x00000010
+TH32CS_SNAPPROCESS = 0x00000002
+TH32CS_SNAPTHREAD = 0x00000004
+
+TH32CS_SNAPALL = (
+    TH32CS_SNAPHEAPLIST |
+    TH32CS_SNAPMODULE |
+    TH32CS_SNAPPROCESS |
+    TH32CS_SNAPTHREAD
+)
 
 
 STILL_ACTIVE = 0x00000103
@@ -83,6 +103,7 @@ PROCESS_ALL_ACCESS = (
 )
 
 MAX_PATH = 0x00000104
+MAX_MODULE_NAME32 = 0x000000FF
 PROCESS_NAME_NATIVE = 0x00000001
 
 ABOVE_NORMAL_PRIORITY_CLASS = 0x00008000
@@ -134,6 +155,7 @@ kernel32 = ctypes.windll.kernel32
 psapi = ctypes.windll.psapi
 
 KILL_INPUT = input
+
 
 # noinspection PyPep8Naming
 class _PERFORMANCE_INFORMATION(ctypes.Structure):
@@ -221,6 +243,55 @@ class _PROCESS_INFORMATION(ctypes.Structure):
 PROCESS_INFORMATION = _PROCESS_INFORMATION
 LPPROCESS_INFORMATION = POINTER(PROCESS_INFORMATION)
 
+
+# noinspection PyPep8Naming,PyCallingNonCallable,PyTypeChecker
+class tagPROCESSENTRY32(ctypes.Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('cntUsage', DWORD),
+        ('th32ProcessID', DWORD),
+        ('th32DefaultHeapID', ULONG_PTR),
+        ('th32ModuleID', DWORD),
+        ('cntThreads', DWORD),
+        ('th32ParentProcessID', DWORD),
+        ('pcPriClassBase', LONG),
+        ('dwFlags', DWORD),
+        ('szExeFile', TCHAR * MAX_PATH)
+    ]
+
+    def __init__(self):
+        ctypes.Structure.__init__(self)
+        self.dwSize = ctypes.sizeof(self)
+
+
+PROCESSENTRY32 = tagPROCESSENTRY32
+PPROCESSENTRY32 = POINTER(PROCESSENTRY32)
+
+
+# noinspection PyPep8Naming,PyCallingNonCallable,PyTypeChecker
+class tagMODULEENTRY32(ctypes.Structure):
+    _fields_ = [
+        ('dwSize', DWORD),
+        ('th32ModuleID', DWORD),
+        ('th32ProcessID', DWORD),
+        ('GlblcntUsage', ULONG_PTR),
+        ('ProccntUsage', DWORD),
+        ('modBaseAddr', POINTER(BYTE)),
+        ('modBaseSize', DWORD),
+        ('hModule', HMODULE),
+        ('szModule', TCHAR * (MAX_MODULE_NAME32 + 1)),
+        ('szExePath', TCHAR * MAX_PATH)
+    ]
+
+    def __init__(self):
+        ctypes.Structure.__init__(self)
+        self.dwSize = ctypes.sizeof(self)
+
+
+MODULEENTRY32 = tagMODULEENTRY32
+PMODULEENTRY32 = POINTER(MODULEENTRY32)
+
+
 _OpenProcess = kernel32.OpenProcess
 _OpenProcess.restype = HANDLE
 
@@ -264,6 +335,24 @@ ExitProcess = kernel32.ExitProcess
 _GetExitCodeProcess = kernel32.GetExitCodeProcess
 _GetExitCodeProcess.restype = BOOL
 
+_CreateToolhelp32Snapshot = kernel32.CreateToolhelp32Snapshot
+_CreateToolhelp32Snapshot.restype = HANDLE
+
+_Process32First = kernel32.Process32FirstW
+_Process32First.restype = BOOL
+
+_Process32Next = kernel32.Process32NextW
+_Process32Next.restype = BOOL
+
+_Module32First = kernel32.Module32FirstW
+_Module32First.restype = BOOL
+
+_Module32Next = kernel32.Module32NextW
+_Module32Next.restype = BOOL
+
+_GetLastError = kernel32.GetLastError
+_GetLastError.restype = DWORD
+
 
 # noinspection PyPep8Naming
 def GetStartupInfo():
@@ -278,6 +367,7 @@ def GetStartupInfo():
 class Process(object):
 
     def __init__(self, dwProcessId):
+        self.is_open = False
         self.hProcess = NULL
         self.dwProcessId = dwProcessId
         self.bInheritHandle = BOOL(False)
@@ -286,6 +376,66 @@ class Process(object):
             PROCESS_VM_READ |
             PROCESS_TERMINATE
         )
+
+    @property
+    def child_processes(self):
+        if self.parent_process is None:
+            return []
+        
+        dwFlags = DWORD(TH32CS_SNAPPROCESS)
+        th32ProcessID = DWORD(0)
+        hSnapshot = _CreateToolhelp32Snapshot(dwFlags, th32ProcessID)
+        lppe = PROCESSENTRY32()
+
+        res = _Process32First(hSnapshot, ctypes.byref(lppe))
+        ids = []
+
+        while res:
+            if lppe.th32ParentProcessID == self.pid:
+                ids += [lppe.th32ProcessID]
+            lppe = PROCESSENTRY32()
+            res = _Process32Next(hSnapshot, ctypes.byref(lppe))
+
+        return list(Process(pid) for pid in ids)
+
+    @property
+    def parent_process(self):
+        dwFlags = DWORD(TH32CS_SNAPPROCESS)
+        th32ProcessID = DWORD(0)
+        hSnapshot = _CreateToolhelp32Snapshot(dwFlags, th32ProcessID)
+        lppe = PROCESSENTRY32()
+
+        res = _Process32First(hSnapshot, ctypes.byref(lppe))
+        while res:
+            if lppe.th32ProcessID == self.pid:
+                if lppe.th32ParentProcessID:
+                    return Process(lppe.th32ParentProcessID)
+
+            lppe = PROCESSENTRY32()
+            res = _Process32Next(hSnapshot, ctypes.byref(lppe))
+
+    def __get_snapshot(self):
+        dwFlags = DWORD(TH32CS_SNAPPROCESS)
+        th32ProcessID = DWORD(0)
+        hSnapshot = _CreateToolhelp32Snapshot(dwFlags, th32ProcessID)
+        lppe = PROCESSENTRY32()
+
+        res = _Process32First(hSnapshot, ctypes.byref(lppe))
+        while res:
+            if lppe.th32ProcessID == self.pid:
+                dwFlags = DWORD(TH32CS_SNAPMODULE)
+                th32ProcessID = lppe.th32ProcessID
+                hSnapshot = _CreateToolhelp32Snapshot(dwFlags, th32ProcessID)
+                lpme = MODULEENTRY32()
+                res = _Module32First(hSnapshot, ctypes.byref(lpme))
+
+                if res:
+                    return lpme.szExePath
+                else:
+                    return lppe.szExeFile
+
+            lppe = PROCESSENTRY32()
+            res = _Process32Next(hSnapshot, ctypes.byref(lppe))
 
     def set_inherit_handle(self, bInheritHandle=BOOL(False)):
         if not isinstance(bInheritHandle, BOOL):
@@ -314,6 +464,7 @@ class Process(object):
         if self.hProcess is not NULL:
             _CloseHandle(self.hProcess)
 
+        self.is_open = True
         self.hProcess = _OpenProcess(
             self.dwDesiredAccess,
             self.bInheritHandle,
@@ -327,6 +478,18 @@ class Process(object):
             lpImageFileName = ctypes.create_unicode_buffer(MAX_PATH)
             _GetProcessImageFileName(self.hProcess, lpImageFileName, MAX_PATH)
             return os.path.dirname(lpImageFileName.value)
+        elif self.is_open:
+            if self.pid == 0:
+                return 'System Idle Process'
+            path = self.__get_snapshot()
+            if path is None:
+                return 'ACCESS DENIED'
+            else:
+                res = os.path.dirname(path)
+                if res:
+                    return res
+
+                return path
 
     @property
     def executable(self):
@@ -334,6 +497,18 @@ class Process(object):
             lpImageFileName = ctypes.create_unicode_buffer(MAX_PATH)
             _GetProcessImageFileName(self.hProcess, lpImageFileName, MAX_PATH)
             return os.path.basename(lpImageFileName.value)
+        elif self.is_open:
+            if self.pid == 0:
+                return 'System Idle Process'
+
+            path = self.__get_snapshot()
+            if path is None:
+                return 'ACCESS DENIED'
+            else:
+                res = os.path.basename(path)
+                if res:
+                    return res
+                return path
 
     @property
     def full_image_name(self):
@@ -346,7 +521,17 @@ class Process(object):
                 ctypes.byref(lpExeName),
                 ctypes.byref(lpdwSize)
             )
+            if not lpExeName.value:
+                return os.path.join(self.path, self.executable)
             return lpExeName.value
+        elif self.is_open:
+            if self.pid == 0:
+                return 'System Idle Process'
+            path = self.__get_snapshot()
+            if path is None:
+                return 'ACCESS DENIED'
+            else:
+                return path
 
     @property
     def exit_code(self):
@@ -375,6 +560,7 @@ class Process(object):
         return self.dwProcessId
 
     def close(self):
+        self.is_open = False
         if self.hProcess is not NULL:
             _CloseHandle(self.hProcess)
             self.hProcess = NULL
@@ -504,7 +690,8 @@ class Process(object):
 
 # noinspection PyPep8Naming,PyCallingNonCallable,PyTypeChecker
 class EnumProcesses(object):
-    def __iter__(self):
+
+    def __get_processes(self):
         i = 70
         while True:
             lpidProcess = (DWORD * i)()
@@ -521,10 +708,14 @@ class EnumProcesses(object):
                 else:
                     i *= 2
 
-        nReturned = cbNeeded.value / ctypes.sizeof(DWORD())
-        pidProcess = [i for i in lpidProcess][:nReturned]
-        for j, pid in enumerate(pidProcess):
+        nReturned = int(cbNeeded.value / ctypes.sizeof(DWORD()))
+        pidProcess = list(i for i in lpidProcess)[:nReturned]
+        for pid in pidProcess:
             yield Process(pid)
+
+    def __iter__(self):
+        for item in self.__get_processes():
+            yield item
 
     def __getitem__(self, item):
         res = []
@@ -540,7 +731,7 @@ class EnumProcesses(object):
                 res += [process]
 
             process.close()
-            
+
         if isinstance(item, int):
             raise IndexError('No process matching PID {0}'.format(item))
 
@@ -550,7 +741,7 @@ class EnumProcesses(object):
         raise KeyError('No process matching name {0}'.format(item))
 
     def __len__(self):
-        return len(list(self))
+        return len(list(self.__get_processes()))
 
 
 # noinspection PyPep8Naming
@@ -566,4 +757,23 @@ def PerformanceInformation():
     return pPerformanceInformation
 
 
+if __name__ == '__main__':
+    process_enum = EnumProcesses()
 
+    printed = []
+
+    def iter_children(prnt, indent=''):
+
+        with prnt as pr:
+            print(indent + 'PID:', pr.pid, pr.executable, pr.path, pr.full_image_name)
+            for child in pr.child_processes:
+                iter_children(child, indent + '    ')
+
+    for prcss in process_enum:
+        with prcss as p:
+            if p.parent_process is None:
+                print('PID:', p.pid, p.executable, p.path, p.full_image_name)
+            else:
+                iter_children(p)
+
+    print('Process count:', len(process_enum))
